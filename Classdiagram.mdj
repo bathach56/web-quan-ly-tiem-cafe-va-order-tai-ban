@@ -1,7 +1,7 @@
 {
 	"_type": "Project",
 	"_id": "e62bf926-c6ce-4cd3-a660-4454ec245349",
-	"name": "Cafe System",
+	"name": "Untitled",
 	"ownedElements": [
 		{
 			"_type": "UMLModel",
@@ -9,7 +9,7 @@
 			"_parent": {
 				"$ref": "e62bf926-c6ce-4cd3-a660-4454ec245349"
 			},
-			"name": "Quancafe",
+			"name": "Model",
 			"ownedElements": [
 				{
 					"_type": "UMLClass",
