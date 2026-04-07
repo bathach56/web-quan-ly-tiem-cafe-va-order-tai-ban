@@ -95,5 +95,3 @@ INSERT INTO users (username, password, full_name, role)
 VALUES ('staff', '123456', 'Nhân viên phục vụ', 'staff');
 
 
-http://localhost:8080/coffee_shop
-http://localhost:8080/coffee_shop/order/menu/1

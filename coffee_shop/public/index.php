@@ -1,35 +1,56 @@
 <?php
-// 1. Cấu hình ép buộc Session tự hủy khi đóng trình duyệt
+// ==========================================
+// 1. CẤU HÌNH BẢO MẬT & SESSION
+// ==========================================
+// Ép Session tự hủy khi trình duyệt đóng hoàn toàn
 ini_set('session.cookie_lifetime', 0);
 session_set_cookie_params(0);
 
-// 2. Bắt đầu Session
+// Khởi động Session
 session_start();
 
-// Các đoạn require_once cấu hình và khởi tạo App bên dưới giữ nguyên...
-require_once '../app/config/config.php';
-// ...
-
-// BẬT HIỂN THỊ LỖI (Dùng trong quá trình Dev, khi deploy lên host thật thì đổi thành 0)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// 1. Load file cấu hình hệ thống
+// ==========================================
+// 2. LOAD CẤU HÌNH HỆ THỐNG
+// ==========================================
+// Load config trước để sử dụng biến hằng số URLROOT cho việc chuyển hướng
 require_once '../app/config/config.php';
 
-// 2. Autoload các file Core của hệ thống (App, Controller, Database)
-// Hàm này sẽ tự động require file khi bạn khởi tạo class mới bằng từ khóa 'new'
-spl_autoload_register(function($className) {
-    $file = '../app/core/' . $className . '.php';
-    if (file_exists($file)) {
-        require_once $file;
-    } else {
-        die("❌ Lỗi hệ thống (Core Autoload): Không tìm thấy file <b>{$className}.php</b> trong thư mục app/core/");
+// ==========================================
+// 3. BỘ ĐẾM BẢO MẬT: HEARTBEAT (NHỊP TIM)
+// ==========================================
+$tab_timeout = 15; // Giới hạn 15 giây không nhận được tín hiệu Ping là đăng xuất
+
+// Nếu đã đăng nhập và có lưu mốc thời gian Ping cuối cùng
+if (isset($_SESSION['user_id']) && isset($_SESSION['last_ping'])) {
+    // Nếu thời gian hiện tại cách lần Ping cuối quá 15 giây (nghĩa là Tab đã bị đóng)
+    if (time() - $_SESSION['last_ping'] > $tab_timeout) {
+        
+        // Hủy toàn bộ phiên làm việc cũ
+        session_unset();
+        session_destroy();
+        
+        // Khởi tạo lại một session mới tĩnh để chứa thông báo lỗi
+        session_start(); 
+        $_SESSION['login_error'] = "Đã đăng xuất do đóng cửa sổ làm việc hoặc mất kết nối!";
+        
+        // Dùng JS để chuyển hướng an toàn, tránh lỗi "Headers already sent" của PHP
+        echo '<script>window.location.href="' . URLROOT . '/auth/admin";</script>';
+        exit;
     }
-});
+}
 
-// 3. Khởi tạo ứng dụng (Chạy Router)
-// Quá trình này sẽ lấy URL, tìm đúng Controller và gọi Method tương ứng
-$init = new App();
+// Cập nhật lại mốc Ping mỗi khi người dùng thao tác load/chuyển trang bình thường (F5)
+if (isset($_SESSION['user_id'])) {
+    $_SESSION['last_ping'] = time(); 
+}
+
+// ==========================================
+// 4. KHỞI TẠO CÁC CORE CLASS
+// ==========================================
+require_once '../app/core/App.php';
+require_once '../app/core/Controller.php';
+require_once '../app/core/Database.php';
+
+// Khởi chạy hệ thống định tuyến (Router)
+$app = new App();
 ?>

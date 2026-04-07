@@ -87,41 +87,36 @@ class Order extends Controller {
      * URL: /order/create
      * ==========================================
      */
+    // API tạo đơn hàng (Nhận dữ liệu JSON từ frontend)
+    // API tạo đơn hàng (Nhận dữ liệu JSON từ frontend)
     public function create() {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $table_id = $_POST['table_id'] ?? null;
-            $staff_id = $_POST['staff_id'] ?? null;
-            $items    = $_POST['items'] ?? [];
-            $status   = $_POST['status'] ?? 'pending';
+        if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+            // Đọc dữ liệu JSON gửi từ Fetch API
+            $data = json_decode(file_get_contents('php://input'), true);
 
-            // Xử lý dữ liệu JSON gửi lên từ Fetch API
-            if (empty($items) && isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
-                $input = json_decode(file_get_contents('php://input'), true);
-                $table_id = $input['table_id'] ?? null;
-                $staff_id = $input['staff_id'] ?? null;
-                $items    = $input['items'] ?? [];
-                $status   = $input['status'] ?? 'pending'; // Nhận thêm status (pending, processing, completed)
+            if (!isset($data['table_id']) || empty($data['items'])) {
+                echo json_encode(['success' => false, 'message' => 'Dữ liệu không hợp lệ']);
+                return;
             }
 
-            if (!$table_id || empty($items)) {
-                echo json_encode(['success' => false, 'message' => 'Thiếu dữ liệu (Bàn hoặc Món ăn)!']);
-                exit;
-            }
+            $table_id = $data['table_id'];
+            $staff_id = $data['staff_id'] ?? null;
+            $items    = $data['items'];
+            
+            // LẤY BIẾN STATUS TỪ JSON (Nếu không có thì mặc định là 'pending')
+            $status   = $data['status'] ?? 'pending';
 
-            // Gọi Model để xử lý Transaction lưu Database
-            $orderId = $this->orderModel->createOrder($table_id, $staff_id, $items, $status);
+            // TRUYỀN BIẾN $status VÀO LÀM THAM SỐ THỨ 4 CHO MODEL
+            $order_id = $this->orderModel->createOrder($table_id, $staff_id, $items, $status);
 
-            if ($orderId) {
-                echo json_encode([
-                    'success' => true,
-                    'order_id' => $orderId,
-                    'message' => 'Thao tác đơn hàng thành công!'
-                ]);
+            if ($order_id) {
+                echo json_encode(['success' => true, 'order_id' => $order_id]);
             } else {
-                echo json_encode(['success' => false, 'message' => 'Lỗi hệ thống khi lưu đơn hàng!']);
+                echo json_encode(['success' => false, 'message' => 'Lỗi hệ thống khi tạo đơn hàng']);
             }
+            exit;
         }
-        exit;
     }
 }
+
 ?>

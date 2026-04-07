@@ -1,89 +1,150 @@
-<?php require_once '../app/views/inc/header.php'; ?>
-
-<div class="container-fluid min-vh-100 d-flex align-items-center justify-content-center bg-light" style="background: linear-gradient(135deg, #8d5524 0%, #5c3311 100%);">
-    <div class="row justify-content-center w-100">
-        <div class="col-lg-4 col-md-6 col-sm-8">
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập hệ thống - Coffee Shop</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        /* ========================================= */
+        /* 1. CÀI ĐẶT ẢNH NỀN GÁI ANIME Ở ĐÂY        */
+        /* ========================================= */
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             
-            <div class="card shadow-lg border-0 rounded-4 overflow-hidden">
-                <!-- Header -->
-                <div class="card-header bg-dark text-white text-center py-4">
-                    <h3 class="mb-1 fw-bold">
-                        <i class="fas fa-coffee me-2"></i> Coffee Shop
-                    </h3>
-                    <p class="mb-0 opacity-75">Quản trị hệ thống</p>
-                </div>
+            /* Dùng tạm 1 ảnh demo. Bạn hãy tải ảnh gái anime cầm matcha yêu thích, 
+               lưu vào thư mục public/assets/img/ và đổi đường dẫn nhé! */
+            background-image: url('https://caffecorsini.com/cdn/shop/articles/Header_4880cdaa-2199-4bef-9bfc-cf48126fcea0.png?v=1762180232&width=2000'); 
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
 
-                <div class="card-body p-5">
-                    <h4 class="text-center mb-4 text-dark">Đăng nhập Admin</h4>
+        /* ========================================= */
+        /* 2. LỚP PHỦ LÀM MỜ VÀ TỐI ẢNH NỀN          */
+        /* ========================================= */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.3); /* Phủ đen 30% để dễ đọc chữ */
+            backdrop-filter: blur(6px);     /* Làm mờ background 6px (Mấu chốt là ở đây) */
+            z-index: 1;
+        }
 
-                    <?php if (isset($_SESSION['login_error'])): ?>
-                        <div class="alert alert-danger text-center">
-                            <?= $_SESSION['login_error'] ?>
-                        </div>
-                        <?php unset($_SESSION['login_error']); ?>
-                    <?php endif; ?>
+        /* ========================================= */
+        /* 3. HIỆU ỨNG KÍNH MỜ CHO BOX ĐĂNG NHẬP     */
+        /* ========================================= */
+        .login-box {
+            position: relative;
+            z-index: 2; /* Nổi lên trên lớp mờ */
+            width: 100%;
+            max-width: 420px;
+            
+            /* Nền trắng trong suốt tạo hiệu ứng kính */
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(15px); 
+            
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
 
-                    <form action="<?= URLROOT ?>/auth/admin_authenticate" method="POST">
-                        
-                        <div class="mb-4">
-                            <label class="form-label fw-semibold">Tên đăng nhập</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-user"></i></span>
-                                <input type="text" name="username" class="form-control form-control-lg" 
-                                       placeholder="Nhập tên đăng nhập" required autofocus>
-                            </div>
-                        </div>
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
 
-                        <div class="mb-4">
-                            <label class="form-label fw-semibold">Mật khẩu</label>
-                            <div class="input-group">
-                                <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                <input type="password" name="password" class="form-control form-control-lg" 
-                                       placeholder="Nhập mật khẩu" required>
-                            </div>
-                        </div>
+        .login-header i {
+            font-size: 3rem;
+            color: #8d5524;
+            margin-bottom: 10px;
+        }
 
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <div class="form-check">
-                                <input type="checkbox" class="form-check-input" id="remember">
-                                <label class="form-check-label" for="remember">Ghi nhớ tôi</label>
-                            </div>
-                            <a href="#" onclick="forgotPassword()" class="text-decoration-none text-primary">
-                                Quên mật khẩu?
-                            </a>
-                        </div>
+        .login-header h4 {
+            font-weight: 800;
+            color: #333;
+            letter-spacing: 1px;
+        }
 
-                        <button type="submit" class="btn btn-warning btn-lg w-100 fw-bold text-dark">
-                            <i class="fas fa-sign-in-alt me-2"></i> ĐĂNG NHẬP
-                        </button>
-                    </form>
-                </div>
+        .form-control {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #ddd;
+            padding: 12px 15px;
+            border-radius: 10px;
+        }
 
-                <!-- Footer -->
-                <div class="card-footer bg-light text-center py-3">
-                    <small class="text-muted">
-                        Chỉ dành cho Quản trị viên hệ thống
-                    </small>
-                </div>
-            </div>
+        .form-control:focus {
+            box-shadow: 0 0 0 0.25rem rgba(141, 85, 36, 0.25);
+            border-color: #8d5524;
+        }
 
-            <!-- Back to POS -->
-            <div class="text-center mt-4">
-                <a href="<?= URLROOT ?>/order/pos" class="text-white opacity-75 text-decoration-none">
-                    ← Quay lại màn hình POS
-                </a>
-            </div>
+        .btn-login {
+            background: #8d5524;
+            color: white;
+            font-weight: bold;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
+            transition: 0.3s;
+        }
+
+        .btn-login:hover {
+            background: #6b3e18;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(141, 85, 36, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-box">
+        <div class="login-header">
+            <i class="fas fa-coffee"></i>
+            <h4>ĐĂNG NHẬP HỆ THỐNG</h4>
+            <p class="text-muted mb-0">Quản trị & Thu ngân Coffee Shop</p>
         </div>
+
+        <?php if (isset($_SESSION['login_error'])): ?>
+            <div class="alert alert-danger text-center shadow-sm" style="border-radius: 10px;">
+                <i class="fas fa-exclamation-circle me-1"></i> <?= $_SESSION['login_error']; unset($_SESSION['login_error']); ?>
+            </div>
+        <?php endif; ?>
+
+        <form action="<?= URLROOT ?>/auth/login" method="POST">
+            <div class="mb-3">
+                <label class="form-label fw-bold text-dark">Tên đăng nhập</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-user text-muted"></i></span>
+                    <input type="text" name="username" class="form-control border-start-0" required placeholder="Nhập tài khoản...">
+                </div>
+            </div>
+            
+            <div class="mb-4">
+                <label class="form-label fw-bold text-dark">Mật khẩu</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-lock text-muted"></i></span>
+                    <input type="password" name="password" class="form-control border-start-0" required placeholder="Nhập mật khẩu...">
+                </div>
+            </div>
+            
+            <div class="d-grid">
+                <button type="submit" class="btn btn-login fs-5">
+                    ĐĂNG NHẬP <i class="fas fa-sign-in-alt ms-2"></i>
+                </button>
+            </div>
+        </form>
     </div>
-</div>
 
-<script>
-function forgotPassword() {
-    const username = prompt("Nhập tên đăng nhập của bạn:");
-    if (username) {
-        alert("🔄 Tính năng khôi phục mật khẩu đang được phát triển.\n\nVui lòng liên hệ quản lý để reset mật khẩu.");
-    }
-}
-</script>
-
-<?php require_once '../app/views/inc/footer.php'; ?>
+</body>
+</html>

@@ -6,7 +6,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Menu - Bàn <?= htmlspecialchars($table['table_name']) ?></title>
+    <title>Menu - <?= htmlspecialchars($table['table_name']) ?></title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -48,6 +48,41 @@
         
         /* Offcanvas Cart Modal */
         .offcanvas-bottom { height: 75vh !important; border-top-left-radius: 20px; border-top-right-radius: 20px; }
+
+        /* ======================================= */
+        /* CSS CHO POPUP ANIMATION ĐẶT MÓN THÀNH CÔNG */
+        /* ======================================= */
+        #successOverlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); z-index: 10500;
+            display: none; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        .success-modal {
+            background: white; width: 85%; max-width: 340px;
+            border-radius: 24px; padding: 35px 20px 25px; text-align: center;
+            transform: scale(0.5); opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+        .success-modal.active { transform: scale(1); opacity: 1; }
+        
+        .success-icon-wrap {
+            width: 70px; height: 70px; background: #28a745;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+            animation: popIn 0.6s ease forwards;
+            animation-delay: 0.1s;
+            transform: scale(0);
+        }
+        .success-icon-wrap i { font-size: 35px; color: white; }
+        
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            60% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -58,7 +93,7 @@
             <small class="opacity-75">Thực đơn điện tử</small>
         </div>
         <div class="table-badge">
-            <i class="fas fa-chair me-1"></i> Bàn <?= htmlspecialchars($table['table_name']) ?>
+            <i class="fas fa-chair me-1"></i> <?= htmlspecialchars($table['table_name']) ?>
         </div>
     </div>
 
@@ -118,6 +153,19 @@
         </div>
     </div>
 
+    <div id="successOverlay">
+        <div class="success-modal" id="successModal">
+            <div class="success-icon-wrap">
+                <i class="fas fa-check"></i>
+            </div>
+            <h4 class="fw-bold text-success mb-2">Tuyệt vời!</h4>
+            <p class="text-muted mb-4" style="font-size: 0.95rem;">Đơn hàng của bạn đã được gửi xuống bếp. Vui lòng đợi trong giây lát nhé.</p>
+            <button class="btn btn-success w-100 rounded-pill py-2 fw-bold fs-5 shadow-sm" onclick="closeSuccessPopup()">
+                Đồng ý
+            </button>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Dữ liệu từ PHP
@@ -125,19 +173,16 @@
         const assetImg = '<?= ASSET_IMG ?>';
         let cart = {}; // Cấu trúc: { product_id: { product, quantity } }
 
-        // ==================== RENDER DANH MỤC ====================
+        // ==================== RENDER DANH MỤC & SẢN PHẨM ====================
         function renderCategories() {
             const wrapper = document.getElementById('categoryWrapper');
             const categories = [...new Set(products.map(p => p.category_name))];
             
             let html = `<div class="cat-btn active" onclick="filterCategory('all', this)">Tất cả</div>`;
-            categories.forEach(cat => {
-                html += `<div class="cat-btn" onclick="filterCategory('${cat}', this)">${cat}</div>`;
-            });
+            categories.forEach(cat => { html += `<div class="cat-btn" onclick="filterCategory('${cat}', this)">${cat}</div>`; });
             wrapper.innerHTML = html;
         }
 
-        // ==================== RENDER SẢN PHẨM ====================
         function renderProducts(filteredProducts) {
             const list = document.getElementById('productList');
             let html = '';
@@ -149,7 +194,6 @@
 
             filteredProducts.forEach(p => {
                 const qty = cart[p.id] ? cart[p.id].quantity : 0;
-                
                 html += `
                 <div class="product-item">
                     <img src="${assetImg}${p.image}" class="product-img" onerror="this.src='${assetImg}default.jpg'">
@@ -177,19 +221,15 @@
             list.innerHTML = html;
         }
 
-        // ==================== XỬ LÝ LỌC & TÌM KIẾM ====================
         function filterCategory(cat, el) {
             document.querySelectorAll('.cat-btn').forEach(btn => btn.classList.remove('active'));
             el.classList.add('active');
-            
-            const filtered = cat === 'all' ? products : products.filter(p => p.category_name === cat);
-            renderProducts(filtered);
+            renderProducts(cat === 'all' ? products : products.filter(p => p.category_name === cat));
         }
 
         document.getElementById('searchInput').addEventListener('input', function(e) {
             const term = e.target.value.toLowerCase();
-            const filtered = products.filter(p => p.name.toLowerCase().includes(term));
-            renderProducts(filtered);
+            renderProducts(products.filter(p => p.name.toLowerCase().includes(term)));
         });
 
         // ==================== XỬ LÝ GIỎ HÀNG ====================
@@ -209,7 +249,6 @@
 
             updateCartUI();
             
-            // Re-render danh sách sản phẩm để cập nhật nút (+/-)
             const activeCat = document.querySelector('.cat-btn.active').innerText;
             const term = document.getElementById('searchInput').value.toLowerCase();
             let filtered = products;
@@ -231,7 +270,6 @@
             document.getElementById('cartTotal').innerText = totalPrice.toLocaleString('vi-VN') + ' đ';
             document.getElementById('modalTotal').innerText = totalPrice.toLocaleString('vi-VN') + ' đ';
             
-            // Hiện/Ẩn thanh bottom
             const bottomBar = document.querySelector('.bottom-bar');
             bottomBar.style.transform = totalItems > 0 ? 'translateY(0)' : 'translateY(150%)';
             bottomBar.style.transition = 'transform 0.3s ease';
@@ -239,7 +277,6 @@
             renderCartModal();
         }
 
-        // ==================== MODAL CHI TIẾT GIỎ HÀNG ====================
         const cartOffcanvas = new bootstrap.Offcanvas(document.getElementById('cartOffcanvas'));
         
         function openCart() {
@@ -274,7 +311,7 @@
             container.innerHTML = html;
         }
 
-        // ==================== AJAX GỬI ORDER ====================
+        // ==================== AJAX GỬI ORDER & POPUP ANIMATION ====================
         function submitOrder() {
             if (Object.keys(cart).length === 0) return;
             
@@ -297,7 +334,10 @@
             .then(data => {
                 if (data.success) {
                     cartOffcanvas.hide();
-                    alert('✅ Đã gửi Order thành công xuống Bếp!\nCảm ơn quý khách.');
+                    
+                    // Gọi hàm hiển thị Popup Animation (Đã fix: bỏ truyền order_id)
+                    showSuccessPopup();
+                    
                     cart = {}; // Xóa giỏ hàng
                     updateCartUI();
                     renderProducts(products); // Reset lại UI
@@ -306,6 +346,30 @@
                 }
             })
             .catch(() => alert('Lỗi kết nối đến máy chủ!'));
+        }
+
+        // [ĐÃ FIX] Hàm kích hoạt Popup (bỏ orderId)
+        function showSuccessPopup() {
+            const overlay = document.getElementById('successOverlay');
+            const modal = document.getElementById('successModal');
+            
+            overlay.style.display = 'flex';
+            // Mẹo ép trình duyệt render lại (reflow) để animation chạy mượt
+            void overlay.offsetWidth; 
+            modal.classList.add('active');
+        }
+
+        // Hàm đóng Popup
+        function closeSuccessPopup() {
+            const overlay = document.getElementById('successOverlay');
+            const modal = document.getElementById('successModal');
+            
+            modal.classList.remove('active');
+            
+            // Đợi 300ms cho animation mờ dần kết thúc rồi mới ẩn hoàn toàn div
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 300);
         }
 
         // ==================== CÁC HÀM PHỤ ====================
@@ -319,11 +383,10 @@
             alert('Đã gửi thông báo gọi nhân viên hỗ trợ / tính tiền cho bàn của bạn!');
         }
 
-        // Khởi tạo
         window.onload = () => {
             renderCategories();
             renderProducts(products);
-            updateCartUI(); // Ẩn bottom bar lúc mới vào
+            updateCartUI(); 
         };
     </script>
 </body>
