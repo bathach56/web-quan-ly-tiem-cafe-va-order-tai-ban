@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 05, 2026 at 02:16 PM
+-- Generation Time: Apr 07, 2026 at 06:18 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.0.30
 
@@ -41,6 +41,61 @@ INSERT INTO `categories` (`id`, `name`, `created_at`) VALUES
 (1, 'Cà Phê', '2026-04-03 02:50:10'),
 (2, 'Trà Trái Cây', '2026-04-03 02:50:10'),
 (3, 'Bánh Ngọt', '2026-04-03 02:50:10');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `inventory_items`
+--
+
+CREATE TABLE `inventory_items` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `unit` varchar(50) NOT NULL,
+  `min_stock` int(11) DEFAULT 0 COMMENT 'Mức cảnh báo sắp hết hàng'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `inventory_items`
+--
+
+INSERT INTO `inventory_items` (`id`, `name`, `unit`, `min_stock`) VALUES
+(1, 'Cà phê hạt pha máy (Arabica/Robusta)', 'Kg', 5),
+(2, 'Sữa tươi thanh trùng Đà Lạt Milk', 'Hộp 1L', 15),
+(3, 'Đường cát trắng Biên Hòa', 'Kg', 10),
+(4, 'Syrup Caramel Monin', 'Chai', 2),
+(5, 'Ly nhựa dập màng size M', 'Cái', 500);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `inventory_transactions`
+--
+
+CREATE TABLE `inventory_transactions` (
+  `id` int(11) NOT NULL,
+  `item_id` int(11) NOT NULL,
+  `type` enum('in','out') NOT NULL,
+  `quantity` int(11) NOT NULL,
+  `note` text DEFAULT NULL,
+  `staff_id` int(11) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `inventory_transactions`
+--
+
+INSERT INTO `inventory_transactions` (`id`, `item_id`, `type`, `quantity`, `note`, `staff_id`, `created_at`) VALUES
+(1, 1, 'in', 20, 'Nhập lô hàng đầu tháng', 1, '2026-04-02 04:15:20'),
+(2, 1, 'out', 5, 'Xuất quầy pha chế', 1, '2026-04-05 04:15:20'),
+(3, 2, 'in', 40, 'Nhập từ nhà cung cấp', 1, '2026-04-03 04:15:20'),
+(4, 2, 'out', 30, 'Xuất sử dụng trong tuần', 1, '2026-04-07 04:15:20'),
+(5, 3, 'in', 10, 'Nhập tạp hóa', 1, '2026-03-28 04:15:20'),
+(6, 3, 'out', 10, 'Xuất cho bếp làm syrup', 1, '2026-04-07 04:15:20'),
+(7, 4, 'in', 6, 'Nhập hàng', 1, '2026-04-06 04:15:20'),
+(8, 5, 'in', 2000, 'Nhập kho bao bì', 1, '2026-03-23 04:15:20'),
+(9, 5, 'out', 450, 'Xuất quầy thu ngân', 1, '2026-04-06 04:15:20');
 
 -- --------------------------------------------------------
 
@@ -189,16 +244,17 @@ CREATE TABLE `users` (
   `password` varchar(255) NOT NULL,
   `full_name` varchar(100) NOT NULL,
   `role` enum('staff','admin') DEFAULT 'staff',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `status` enum('active','inactive') DEFAULT 'active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `users`
 --
 
-INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `role`, `created_at`) VALUES
-(1, 'admin', '123456', 'Quản Trị Viên', 'admin', '2026-04-04 15:05:55'),
-(2, 'staff', '123456', 'Nhân Viên Phục Vụ', 'staff', '2026-04-04 15:06:29');
+INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `role`, `created_at`, `status`) VALUES
+(1, 'admin', '123456', 'Quản Trị Viên', 'admin', '2026-04-04 15:05:55', 'active'),
+(2, 'staff', '123456', 'Nhân Viên Phục Vụ', 'staff', '2026-04-04 15:06:29', 'active');
 
 --
 -- Indexes for dumped tables
@@ -209,6 +265,19 @@ INSERT INTO `users` (`id`, `username`, `password`, `full_name`, `role`, `created
 --
 ALTER TABLE `categories`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `inventory_items`
+--
+ALTER TABLE `inventory_items`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `inventory_transactions`
+--
+ALTER TABLE `inventory_transactions`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `item_id` (`item_id`);
 
 --
 -- Indexes for table `orders`
@@ -257,6 +326,18 @@ ALTER TABLE `categories`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
+-- AUTO_INCREMENT for table `inventory_items`
+--
+ALTER TABLE `inventory_items`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT for table `inventory_transactions`
+--
+ALTER TABLE `inventory_transactions`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+
+--
 -- AUTO_INCREMENT for table `orders`
 --
 ALTER TABLE `orders`
@@ -289,6 +370,12 @@ ALTER TABLE `users`
 --
 -- Constraints for dumped tables
 --
+
+--
+-- Constraints for table `inventory_transactions`
+--
+ALTER TABLE `inventory_transactions`
+  ADD CONSTRAINT `inventory_transactions_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `inventory_items` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `orders`
