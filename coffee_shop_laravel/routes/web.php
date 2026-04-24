@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 
-// Khai báo đầy đủ các Controller đã xây dựng
+// Khai báo đầy đủ các Controller (Đã cập nhật đúng địa chỉ thư mục của Thịnh)
 use App\Http\Controllers\{
     AuthController,
     DashboardController,
@@ -16,7 +16,9 @@ use App\Http\Controllers\{
     CategoryController,
     TableController,
     EmployeeController,
-    CustomerOrderController
+    CustomerOrderController,
+    ForgotPasswordController,
+    ResetPasswordController
 };
 
 /*
@@ -25,10 +27,10 @@ use App\Http\Controllers\{
 |--------------------------------------------------------------------------
 */
 
-// 1. ĐIỀU HƯỚNG GỐC: Luôn ép vào trang Đăng nhập hoặc Điều hướng theo quyền
+// 1. ĐIỀU HƯỚNG GỐC: Điều hướng thông minh dựa trên chức vụ khi vào trang chủ
 Route::get('/', function () {
     if (Auth::check()) {
-        // Fix lỗi F5: Redirect thông minh dựa trên chức vụ
+        // Phân quyền: Admin vào Dashboard, nhân viên vào thẳng máy bán hàng POS
         return Auth::user()->position === 'Admin' 
             ? redirect()->route('dashboard') 
             : redirect()->route('pos.index');
@@ -36,80 +38,96 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
-// 2. XÁC THỰC (PUBLIC ROUTES)
-Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'processLogin'])->name('login.process');
-Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
+// 2. XÁC THỰC & QUÊN MẬT KHẨU (PUBLIC ROUTES)
+Route::controller(AuthController::class)->group(function () {
+    Route::get('/login', 'showLogin')->name('login');
+    Route::post('/login', 'processLogin')->name('login.process');
+    Route::get('/register', 'showRegister')->name('register');
+    Route::post('/register', 'processRegister')->name('register.process');
+    Route::match(['get', 'post'], '/logout', 'logout')->name('logout');
+});
 
-// === THÊM 2 ROUTE ĐĂNG KÝ Ở ĐÂY ===
-Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
-Route::post('/register', [AuthController::class, 'processRegister'])->name('register.process');
+// Chức năng Quên mật khẩu (Cấu hình qua Mailtrap đã xong)
+Route::get('forgot-password', [ForgotPasswordController::class, 'showLinkRequestForm'])->name('password.request');
+Route::post('forgot-password', [ForgotPasswordController::class, 'sendResetLinkEmail'])->name('password.email');
+Route::get('reset-password/{token}', [ResetPasswordController::class, 'showResetForm'])->name('password.reset');
+Route::post('reset-password', [ResetPasswordController::class, 'reset'])->name('password.update');
 
 // 3. DÀNH CHO KHÁCH HÀNG (QUÉT QR TẠI BÀN - KHÔNG CẦN ĐĂNG NHẬP)
-Route::prefix('menu')->name('customer.')->group(function () {
-    Route::get('/table/{id}', [CustomerOrderController::class, 'index'])->name('menu');
-    Route::post('/order', [CustomerOrderController::class, 'storeOrder'])->name('order.submit');
+Route::prefix('menu')->name('customer.')->controller(CustomerOrderController::class)->group(function () {
+    Route::get('/table/{id}', 'index')->name('menu');
+    Route::post('/order', 'storeOrder')->name('order.submit');
 });
 
 // 4. KHU VỰC BẢO MẬT (YÊU CẦU ĐĂNG NHẬP)
 Route::middleware(['auth'])->group(function () {
     
-    // --- MÁY BÁN HÀNG POS (Dành cho Nhân viên) ---
-    Route::prefix('pos')->name('pos.')->group(function () {
-        Route::get('/', [PosController::class, 'index'])->name('index');
-        Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
-        
-        // AJAX: Nạp món từ QR vào khung POS
-        Route::get('/table-order/{id}', [PosController::class, 'getTableOrder'])->name('table_order');
-        
-        // AJAX: Xác nhận gửi đơn xuống bếp
-        Route::post('/send-kitchen', [PosController::class, 'sendToKitchen'])->name('send_kitchen');
-        
-        // In hóa đơn nhiệt (Receipt)
-        Route::get('/print-receipt/{orderId}', [PosController::class, 'printReceipt'])->name('print_receipt');
-    });
-
-    // --- QUẢN TRỊ (Dành cho Admin) ---
+    // --- TRANG CHỦ QUẢN TRỊ (Dành cho Admin) ---
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // Quản lý Bàn & Sơ đồ mặt bằng
-    Route::prefix('tables')->name('tables.')->group(function () {
-        Route::get('/floor-plan', [TableController::class, 'floorPlan'])->name('floor_plan');
-        Route::delete('/bulk-destroy', [TableController::class, 'bulkDestroy'])->name('bulk_destroy');
+    // --- MÁY BÁN HÀNG POS (Nghiệp vụ chính của nhân viên) ---
+    Route::prefix('pos')->name('pos.')->controller(PosController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/checkout', 'checkout')->name('checkout');
         
-        // CRUD Bàn cơ bản
-        Route::get('/', [TableController::class, 'index'])->name('index');
-        Route::post('/store', [TableController::class, 'store'])->name('store');
-        Route::put('/{id}', [TableController::class, 'update'])->name('update');
-        Route::delete('/{id}', [TableController::class, 'destroy'])->name('destroy');
+        // AJAX: Nạp món từ QR vào khung POS khi khách gọi món tại bàn
+        Route::get('/table-order/{id}', 'getTableOrder')->name('table_order');
+        
+        // AJAX: Xác nhận gửi đơn xuống bếp để bắt đầu pha chế
+        Route::post('/send-kitchen', 'sendToKitchen')->name('send_kitchen');
+        
+        // In hóa đơn (Receipt) - Mở tab mới để in
+        Route::get('/print-receipt/{orderId}', 'printReceipt')->name('print_receipt');
     });
 
-    // Quản lý Thực đơn & Danh mục (Sử dụng Resource Route)
+    // --- QUẢN LÝ BÀN & SƠ ĐỒ MẶT BẰNG ---
+    Route::prefix('tables')->name('tables.')->controller(TableController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/floor-plan', 'floorPlan')->name('floor_plan');
+        
+        // ROUTE QUAN TRỌNG: Trả về JSON để React Polling cập nhật CHẤM ĐỎ real-time
+        Route::get('/fetch-status', 'fetchStatus')->name('fetch_status'); 
+        
+        Route::post('/store', 'store')->name('store');
+        Route::put('/{id}', 'update')->name('update');
+        Route::delete('/bulk-destroy', 'bulkDestroy')->name('bulk_destroy');
+        Route::delete('/{id}', 'destroy')->name('destroy');
+    });
+
+    Route::prefix('table-manage')->group(function () {
+    Route::post('/transfer', [TableManagementController::class, 'transferTable'])->name('table.transfer');
+    Route::post('/merge', [TableManagementController::class, 'mergeTable'])->name('table.merge');
+    Route::post('/split', [TableManagementController::class, 'splitTable'])->name('table.split');
+});
+
+    // --- QUẢN LÝ THỰC ĐƠN & DANH MỤC (Resource Routes) ---
     Route::resource('products', ProductController::class);
     Route::resource('categories', CategoryController::class);
 
-    // Quản lý Nhân sự
+    // --- QUẢN LÝ NHÂN SỰ (Nhóm 3) ---
     Route::resource('employees', EmployeeController::class);
 
-    // Kho hàng
-    Route::prefix('inventory')->name('inventory.')->group(function () {
-        Route::get('/', [InventoryController::class, 'index'])->name('index');
-        Route::post('/store', [InventoryController::class, 'store'])->name('store');
-        Route::post('/update-stock', [InventoryController::class, 'updateStock'])->name('update_stock');
+    // --- QUẢN LÝ KHO HÀNG ---
+    Route::prefix('inventory')->name('inventory.')->controller(InventoryController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/store', 'store')->name('store');
+        Route::post('/update-stock', 'updateStock')->name('update_stock');
     });
 
-    // Báo cáo & Thống kê
-    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+// --- BÁO CÁO & THỐNG KÊ ---
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');  
+    Route::get('/reports/excel', [ReportController::class, 'exportExcel'])->name('reports.excel');
+    Route::get('/reports/pdf', [ReportController::class, 'exportPDF'])->name('reports.pdf');
 
-    // Cấu hình cửa hàng
-    Route::prefix('settings')->name('settings.')->group(function () {
-        Route::get('/', [SettingController::class, 'index'])->name('index');
-        Route::post('/update', [SettingController::class, 'update'])->name('update');
+    // --- CẤU HÌNH HỆ THỐNG ---
+    Route::prefix('settings')->name('settings.')->controller(SettingController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/update', 'update')->name('update');
     });
 
-    // Hồ sơ cá nhân
-    Route::prefix('profile')->name('profile.')->group(function () {
-        Route::get('/', [ProfileController::class, 'index'])->name('index');
-        Route::post('/update', [ProfileController::class, 'update'])->name('update');
+    // --- HỒ SƠ CÁ NHÂN ---
+    Route::prefix('profile')->name('profile.')->controller(ProfileController::class)->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/update', 'update')->name('update');
     });
 });

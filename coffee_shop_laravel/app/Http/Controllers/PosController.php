@@ -14,44 +14,46 @@ use Illuminate\Support\Facades\Auth;
 class PosController extends Controller
 {
     /**
-     * Hiển thị giao diện máy POS
-     * Chỉ cho phép nhân viên (Staff) truy cập.
+     * Hiển thị giao diện máy POS cho nhân viên
      */
     public function index()
     {
+        // Chặn Admin vào giao diện bán hàng nếu cần
         if (Auth::user()->position === 'Admin') {
             return redirect()->route('dashboard')->with('error', 'Admin vui lòng xem báo cáo, không trực tiếp bán hàng.');
         }
 
-        $categories = Category::all();
+        $categories = Category::where('status', 'active')->get();
         $products = Product::where('status', 'active')->with('category')->get();
-        $tables = CoffeeTable::all();
+        $tables = CoffeeTable::orderBy('name', 'asc')->get();
 
         return view('pos.index', compact('categories', 'products', 'tables'));
     }
 
     /**
-     * Lấy thông tin món khách đã đặt qua QR
+     * Lấy thông tin đơn hàng hiện tại của bàn (Dùng cho Polling/QR)
      */
     public function getTableOrder($id)
     {
         try {
             $order = Order::where('table_id', $id)
                 ->where('payment_status', 'unpaid')
-                ->whereIn('status', ['pending', 'preparing'])
-                ->with(['details.product'])
+                ->whereIn('status', ['pending', 'unconfirmed', 'preparing'])
+                ->with(['orderDetails.product']) 
                 ->first();
 
             if (!$order) {
-                return response()->json(['success' => false, 'message' => 'Ban nay hien dang trong.']);
+                return response()->json(['success' => false, 'message' => 'Bàn này hiện đang trống.']);
             }
 
-            $details = $order->details->map(function ($item) {
+            // Map dữ liệu để JavaScript nhận đúng key 'id'
+            $details = $order->orderDetails->map(function ($item) {
                 return [
-                    'id'    => $item->product_id,
-                    'name'  => $item->product->name,
-                    'price' => (int)$item->price,
-                    'qty'   => $item->quantity,
+                    'id'        => $item->product_id, // Quan trọng: Đây là key 'id' mà JS cần
+                    'detail_id' => $item->id,
+                    'name'      => $item->product->name ?? 'Món đã bị xóa',
+                    'price'     => (int)$item->price,
+                    'qty'       => $item->quantity,
                 ];
             });
 
@@ -67,7 +69,7 @@ class PosController extends Controller
     }
 
     /**
-     * Xác nhận đơn hàng gửi xuống bếp
+     * Xác nhận đơn hàng gửi xuống bếp & Tắt trạng thái pending
      */
     public function sendToKitchen(Request $request)
     {
@@ -75,12 +77,15 @@ class PosController extends Controller
 
         try {
             DB::beginTransaction();
+            
             $order = Order::findOrFail($request->order_id);
             $order->update(['status' => 'preparing']);
-            CoffeeTable::where('id', $order->table_id)->update(['status' => 'occupied']);
-            DB::commit();
             
-            return response()->json(['success' => true, 'message' => 'Da gui don xuong bep!']);
+            // Chuyển trạng thái bàn sang 'occupied' (màu đỏ)
+            CoffeeTable::where('id', $order->table_id)->update(['status' => 'occupied']);
+            
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Đã gửi đơn xuống bếp thành công!']);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -88,79 +93,83 @@ class PosController extends Controller
     }
 
     /**
-     * XỬ LÝ THANH TOÁN (QUAN TRỌNG NHẤT)
+     * XỬ LÝ THANH TOÁN (Fix lỗi Undefined array key "id")
      */
-    public function checkout(Request $request)
+    public function checkout(Request $request) 
     {
+        // 1. Validate dữ liệu đầu vào
         $request->validate([
-            'table_id'       => 'required|exists:coffee_tables,id',
-            'cart'           => 'required|array|min:1',
-            'payment_method' => 'required|in:cash,card,banking',
-            'total_amount'   => 'required|numeric'
+            'table_id' => 'required',
+            'cart' => 'required|array',
+            'payment_method' => 'required'
         ]);
 
+        DB::beginTransaction();
         try {
-            DB::beginTransaction();
-
-            // 1. Kiểm tra đơn hàng cũ (QR)
-            if ($request->filled('order_id')) {
-                $order = Order::findOrFail($request->order_id);
-                $order->update([
-                    'user_id'        => Auth::id(),
-                    'total_amount'   => $request->total_amount,
-                    'payment_method' => $request->payment_method,
-                    'payment_status' => 'paid',
-                    'status'         => 'completed', // Chuyển về completed để nhảy báo cáo
-                ]);
-
-                // ĐỒNG BỘ MÓN: Xóa chi tiết cũ và tạo lại theo giỏ hàng mới nhất trên POS
-                OrderDetail::where('order_id', $order->id)->delete();
-            } else {
-                // 2. Tạo đơn mới nếu nhân viên nhập trực tiếp
-                $order = Order::create([
-                    'table_id'       => $request->table_id,
-                    'user_id'        => Auth::id(),
-                    'total_amount'   => $request->total_amount,
-                    'payment_method' => $request->payment_method,
-                    'payment_status' => 'paid',
-                    'status'         => 'completed',
-                    'order_date'     => now(),
-                ]);
+            // 2. Tìm đơn hàng cũ (nếu có) hoặc tạo đơn mới
+            $order = null;
+            if ($request->order_id) {
+                $order = Order::find($request->order_id);
             }
 
-            // 3. Lưu chi tiết món (Dùng chung cho cả 2 trường hợp)
+            if (!$order) {
+                $order = new Order();
+                $order->table_id = $request->table_id;
+                $order->order_date = now();
+            }
+
+            // 3. Cập nhật thông tin đơn hàng theo Database thật
+            $order->user_id = Auth::id(); // Dùng user_id thay vì employee_id
+            $order->total_amount = $request->total_amount;
+            $order->payment_method = $request->payment_method;
+            $order->payment_status = 'paid';
+            $order->status = 'completed';
+            $order->save();
+
+            // 4. Xử lý chi tiết món ăn (Xóa cũ nạp mới để đảm bảo tính đồng nhất)
+            OrderDetail::where('order_id', $order->id)->delete();
+
             foreach ($request->cart as $item) {
+                // KIỂM TRA KEY 'id' TRƯỚC KHI LƯU
+                if (!isset($item['id'])) {
+                    throw new \Exception("Dữ liệu giỏ hàng không hợp lệ (Thiếu ID sản phẩm).");
+                }
+
                 OrderDetail::create([
                     'order_id'   => $order->id,
                     'product_id' => $item['id'],
                     'quantity'   => $item['qty'],
-                    'price'      => $item['price'],
+                    'price'      => $item['price']
                 ]);
             }
 
-            // 4. Giải phóng bàn
-            CoffeeTable::where('id', $request->table_id)->update(['status' => 'empty']);
+            // 5. Giải phóng bàn về trạng thái trống
+            CoffeeTable::where('id', $request->table_id)->update(['status' => 'available']);
 
             DB::commit();
-
+            
             return response()->json([
-                'success'  => true,
+                'success' => true,
                 'order_id' => $order->id,
-                'message'  => 'Thanh toan thanh cong!'
+                'message' => 'Thanh toán hoàn tất!'
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi Server: ' . $e->getMessage()
+            ], 500); 
         }
     }
 
     /**
-     * In hóa đơn
+     * In hóa đơn HTML
      */
     public function printReceipt($id)
     {
-        $order = Order::with(['details.product', 'table'])->findOrFail($id);
+        // Load cả user (nhân viên) và table để in bill đầy đủ
+        $order = Order::with(['orderDetails.product', 'table', 'user'])->findOrFail($id);
         return view('pos.receipt', compact('order'));
     }
 }

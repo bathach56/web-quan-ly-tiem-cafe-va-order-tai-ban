@@ -2,48 +2,77 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <title>In hóa đơn #{{ $order->id }}</title>
     <style>
-        @page { size: 80mm 200mm; margin: 0; }
-        body { font-family: 'Courier New', Courier, monospace; width: 80mm; margin: 0; padding: 10px; color: #000; font-size: 14px; }
+        /* Thiết lập khổ giấy in nhiệt chuyên dụng 80mm */
+        @page { size: 80mm auto; margin: 0; }
+        body { 
+            font-family: 'Courier New', Courier, monospace; 
+            width: 72mm; /* Trừ lề an toàn để nội dung không bị mất khi in */
+            margin: 0 auto; 
+            padding: 10px 0; 
+            color: #000; 
+            font-size: 13px; 
+            line-height: 1.4;
+        }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
         .bold { font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 10px 0; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .double-divider { border-top: 2px double #000; margin: 8px 0; }
         table { width: 100%; border-collapse: collapse; }
-        .footer { margin-top: 20px; font-size: 12px; }
+        .shop-name { font-size: 18px; font-weight: 800; text-transform: uppercase; margin-bottom: 2px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .footer { margin-top: 15px; font-size: 11px; font-style: italic; }
+        
+        /* Ẩn các thành phần không cần thiết khi nhấn Ctrl + P */
+        @media print {
+            .no-print { display: none; }
+        }
     </style>
 </head>
-<body onload="window.print(); window.close();">
+<body onload="window.print(); window.onafterprint = function(){ window.close(); }">
+
     <div class="text-center">
-        <h2 style="margin-bottom: 5px;">{{ $shop_setting->shop_name ?? 'MIXI COFFEE' }}</h2>
-        <p style="margin: 0;">{{ $shop_setting->address ?? 'HUTECH - TP. Hồ Chí Minh' }}</p>
-        <p style="margin: 0;">SĐT: {{ $shop_setting->phone ?? '0123.456.789' }}</p>
-        <h3 style="text-transform: uppercase; margin-top: 15px;">Phiếu Thanh Toán</h3>
+        <div class="shop-name">{{ $shop_setting->shop_name ?? 'HUTECH COFFEE' }}</div>
+        <div style="font-size: 11px;">{{ $shop_setting->address ?? 'HUTECH - TP. Hồ Chí Minh' }}</div>
+        <div style="font-size: 11px;">SĐT: {{ $shop_setting->phone ?? '0123.456.789' }}</div>
+        
+        <div class="divider"></div>
+        <h3 style="margin: 10px 0; letter-spacing: 2px;">PHIẾU THANH TOÁN</h3>
     </div>
 
-    <div style="margin-bottom: 5px;">
-        <div>Bàn: <span class="bold">{{ $order->table->name }}</span></div>
-        <div>Ngày: {{ $order->created_at->format('d/m/Y H:i') }}</div>
-        <div>HĐ số: #{{ $order->id }}</div>
-        <div>NV: {{ Auth::user()->name }}</div>
+    <div style="font-size: 12px;">
+        <div class="info-row">
+            <span>Bàn: <span class="bold">{{ $order->table->name }}</span></span> 
+            <span>Khu vực: {{ $order->table->area }}</span>
+        </div>
+        <div class="info-row">
+            <span>Số HĐ: #{{ $order->id }}</span> 
+            <span>Thu ngân: {{ Auth::user()->name }}</span>
+        </div>
+        <div class="info-row">
+            <span>Thời gian:</span> 
+            <span>{{ $order->created_at->format('d/m/Y H:i') }}</span>
+        </div>
     </div>
 
     <div class="divider"></div>
 
-    <table>
+    <table style="font-size: 12px;">
         <thead>
-            <tr>
-                <th align="left">Món</th>
-                <th align="right">SL</th>
-                <th align="right">Tiền</th>
+            <tr style="text-align: left;">
+                <th width="45%">Tên món</th>
+                <th width="15%" class="text-center">SL</th>
+                <th width="40%" class="text-right">Thành tiền</th>
             </tr>
         </thead>
         <tbody>
             @foreach($order->details as $item)
             <tr>
                 <td>{{ $item->product->name }}</td>
-                <td align="right">{{ $item->quantity }}</td>
-                <td align="right">{{ number_format($item->price * $item->quantity) }}</td>
+                <td class="text-center">{{ $item->quantity }}</td>
+                <td class="text-right">{{ number_format($item->price * $item->quantity) }}</td>
             </tr>
             @endforeach
         </tbody>
@@ -51,16 +80,31 @@
 
     <div class="divider"></div>
 
-    <div class="bold">
-        <div style="display: flex; justify-content: space-between;">
+    <div class="bold" style="font-size: 15px;">
+        <div class="info-row">
             <span>TỔNG CỘNG:</span>
             <span>{{ number_format($order->total_amount) }}đ</span>
         </div>
     </div>
+    
+    <div style="font-size: 11px; margin-top: 5px;">
+        <div class="info-row">
+            <span>Hình thức thanh toán:</span>
+            <span>
+                @if($order->payment_method == 'cash') Tiền mặt
+                @elseif($order->payment_method == 'card') Thẻ/POS
+                @else Chuyển khoản @endif
+            </span>
+        </div>
+    </div>
+
+    <div class="double-divider"></div>
 
     <div class="footer text-center">
-        <p>Cảm ơn Quý khách - Hẹn gặp lại!</p>
-        <p style="font-style: italic;">Hệ thống POS bởi Phuc Thinh IT</p>
+        <p style="margin-bottom: 2px;">
+            {{ $shop_setting->footer_text ?? 'Cảm ơn Quý khách - Hẹn gặp lại!' }}
+        </p>
     </div>
+
 </body>
 </html>

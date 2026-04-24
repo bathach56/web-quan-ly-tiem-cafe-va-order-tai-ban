@@ -212,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('edit_desc').value = this.dataset.desc || '';
             document.getElementById('edit_status').value = this.dataset.status;
 
-            editForm.action = `/categories/update/${this.dataset.id}`;
+            editForm.action = `/categories/${this.dataset.id}`;
         });
     });
 

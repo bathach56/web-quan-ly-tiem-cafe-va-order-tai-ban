@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit_area').value = this.dataset.area || '';
             document.getElementById('edit_status').value = this.dataset.status || 'empty';
             
-            document.getElementById('editForm').action = `/tables/update/${this.dataset.id}`;
+            document.getElementById('editForm').action = `/tables/${this.dataset.id}`;
         });
     });
 });

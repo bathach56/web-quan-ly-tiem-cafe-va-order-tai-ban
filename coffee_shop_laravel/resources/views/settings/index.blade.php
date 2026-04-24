@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="mb-4">
-        <h3 class="fw-bold text-white"><i class="fa-solid fa-gear me-2"></i> Cài đặt Hệ thống</h3>
+        <h3 class="fw-bold text-grey"><i class="fa-solid fa-gear me-2"></i> Cài đặt Hệ thống</h3>
         <p class="text-secondary small">Tùy chỉnh thông tin và cấu hình hoạt động của quán</p>
     </div>
 

@@ -64,12 +64,10 @@
         vertical-align: middle;
     }
 
-    /* Đổi màu chữ thông minh theo Theme */
     .dynamic-text { transition: color 0.3s ease; }
     [data-theme="dark"] .dynamic-text { color: #ffffff; }
     [data-theme="light"] .dynamic-text { color: #111827; }
 
-    /* List Top món */
     .product-rank-item {
         border-bottom: 1px solid var(--border-color);
         padding: 10px 0;
@@ -82,15 +80,18 @@
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
             <h3 class="fw-bold m-0 dynamic-text"><i class="fa-solid fa-chart-line text-primary me-2"></i> Báo Cáo Doanh Thu</h3>
-            <p class="text-secondary small m-0 mt-1">Từ {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }} đến {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}</p>
+            <p class="text-secondary small m-0 mt-1">Hệ thống quản lý {{ $shop_setting->shop_name ?? 'HUTECH Coffee' }}</p>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn btn-danger btn-sm px-3 fw-bold shadow-sm" onclick="window.print()" style="background: #ef4444; border: none;">
+            <a href="{{ route('reports.pdf', ['start_date' => $startDate, 'end_date' => $endDate]) }}" 
+               class="btn btn-danger btn-sm px-3 fw-bold shadow-sm" style="background: #ef4444; border: none;">
                 <i class="fa-solid fa-file-pdf me-1"></i> Xuất PDF
-            </button>
-            <button class="btn btn-success btn-sm px-3 fw-bold shadow-sm" style="background: #10b981; border: none;">
+            </a>
+            
+            <a href="{{ route('reports.excel', ['start_date' => $startDate, 'end_date' => $endDate]) }}" 
+               class="btn btn-success btn-sm px-3 fw-bold shadow-sm" style="background: #10b981; border: none;">
                 <i class="fa-solid fa-file-excel me-1"></i> Xuất Excel
-            </button>
+            </a>
         </div>
     </div>
 
@@ -107,7 +108,7 @@
                 </div>
                 <div class="col-md-4">
                     <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm text-uppercase">
-                        <i class="fa-solid fa-filter me-2"></i> Lọc dữ liệu
+                        <i class="fa-solid fa-filter me-2"></i> Cập nhật báo cáo
                     </button>
                 </div>
             </div>
@@ -132,16 +133,16 @@
     <div class="row g-4">
         <div class="col-lg-8">
             <div class="report-card overflow-hidden p-0 animate__animated animate__fadeInUp">
-                <div class="p-3 border-bottom border-color fw-bold dynamic-text">
+                <div class="p-3 border-bottom border-color fw-bold dynamic-text bg-light bg-opacity-10">
                     <i class="fa-solid fa-list me-2"></i> CHI TIẾT DOANH THU THEO NGÀY
                 </div>
                 <div class="table-responsive">
                     <table class="table report-table mb-0 text-center">
                         <thead>
                             <tr>
-                                <th class="ps-4 text-start fw-bold">Ngày</th>
-                                <th class="fw-bold">Số lượng đơn hàng</th>
-                                <th class="pe-4 text-end fw-bold">Doanh thu (VNĐ)</th>
+                                <th class="ps-4 text-start fw-bold">Ngày giao dịch</th>
+                                <th class="fw-bold">Số lượng đơn</th>
+                                <th class="pe-4 text-end fw-bold">Doanh thu ngày</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -155,13 +156,13 @@
                             <tr>
                                 <td colspan="3" class="text-center py-5 text-secondary">
                                     <i class="fa-solid fa-box-open fa-3x mb-3 opacity-50"></i>
-                                    <p class="mb-0">Không có dữ liệu giao dịch trong khoảng thời gian này.</p>
+                                    <p class="mb-0">Không có dữ liệu trong khoảng thời gian này.</p>
                                 </td>
                             </tr>
                             @endforelse
                             
                             @if($reports->count() > 0)
-                            <tr style="background: rgba(0,0,0,0.1);">
+                            <tr style="background: rgba(0,0,0,0.05);">
                                 <td class="ps-4 text-start fw-bold dynamic-text fs-5">TỔNG CỘNG</td>
                                 <td class="fw-bold dynamic-text fs-4 text-info">{{ number_format($totalOrders) }}</td>
                                 <td class="pe-4 text-end fw-bold fs-4" style="color: #10b981;">{{ number_format($totalRevenue) }} đ</td>
@@ -175,25 +176,24 @@
 
         <div class="col-lg-4">
             <div class="report-card animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
-                <div class="p-3 border-bottom border-color fw-bold text-warning">
-                    <i class="fa-solid fa-crown me-2"></i> TOP MÓN BÁN CHẠY NHẤT
+                <div class="p-3 border-bottom border-color fw-bold text-warning bg-light bg-opacity-10">
+                    <i class="fa-solid fa-crown me-2"></i> TOP MÓN BÁN CHẠY
                 </div>
                 <div class="card-body">
                     @forelse($topProducts ?? [] as $index => $product)
                     <div class="product-rank-item d-flex align-items-center justify-content-between">
                         <div class="d-flex align-items-center">
-                            <span class="badge {{ $index == 0 ? 'bg-warning text-dark' : 'bg-secondary' }} me-3" style="width: 25px;">{{ $index + 1 }}</span>
+                            <span class="badge {{ $index == 0 ? 'bg-warning text-dark' : ($index == 1 ? 'bg-light text-dark border' : 'bg-secondary') }} me-3" style="width: 25px;">{{ $index + 1 }}</span>
                             <span class="dynamic-text fw-bold small text-truncate" style="max-width: 150px;">{{ $product->name }}</span>
                         </div>
-                        <span class="text-info fw-bold">{{ $product->total_qty }} <small>phần</small></span>
+                        <span class="text-info fw-bold">{{ $product->total_qty }} <small>ly</small></span>
                     </div>
                     @empty
-                    <p class="text-center text-muted py-4 small">Chưa có dữ liệu sản phẩm.</p>
+                    <p class="text-center text-muted py-4 small">Chưa có dữ liệu.</p>
                     @endforelse
                 </div>
             </div>
         </div>
     </div>
-
 </div>
 @endsection

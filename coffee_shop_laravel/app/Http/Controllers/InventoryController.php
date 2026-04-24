@@ -14,7 +14,20 @@ class InventoryController extends Controller
 
     // Khai báo nguyên liệu mới
     public function store(Request $request) {
-        Ingredient::create($request->all());
+        $request->validate([
+            'code'      => 'required|string|unique:ingredients,code',
+            'name'      => 'required|string|max:255',
+            'unit'      => 'required|string|max:50',
+            'min_stock' => 'nullable|numeric|min:0',
+        ]);
+
+        Ingredient::create([
+            'code'      => $request->code,
+            'name'      => $request->name,
+            'unit'      => $request->unit,
+            'stock'     => 0,
+            'min_stock' => $request->min_stock ?? 5,
+        ]);
         return back()->with('success', 'Đã thêm nguyên liệu mới!');
     }
 

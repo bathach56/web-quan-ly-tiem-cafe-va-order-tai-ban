@@ -263,7 +263,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit_status').value = this.dataset.status;
             document.getElementById('current_image').src = this.dataset.image;
 
-            editForm.action = `/products/update/${this.dataset.id}`;
+            editForm.action = `/products/${this.dataset.id}`;
         });
     });
 });

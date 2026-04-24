@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\CoffeeTable; // Hoặc Table tùy theo tên Model của bạn
+use App\Models\CoffeeTable;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Order;
@@ -21,25 +21,25 @@ class CustomerOrderController extends Controller
         // 1. Lấy thông tin bàn dựa trên ID từ URL
         $table = CoffeeTable::findOrFail($id);
 
-        // 2. Lấy danh sách danh mục có món ăn
-        $categories = Category::all();
+        // 2. Lấy danh mục có trạng thái active để hiển thị menu
+        $categories = Category::where('status', 'active')->get();
 
-        // 3. Lấy danh sách sản phẩm đang kinh doanh (active)
+        // 3. Lấy sản phẩm active kèm thông tin danh mục
         $products = Product::where('status', 'active')
-                           ->with('category')
-                           ->get();
+                            ->with('category')
+                            ->get();
 
-        // Trả về view order xịn xò mà chúng ta đã làm
+        // Trả về view giao diện khách hàng (Thịnh thiết kế Mobile-First cho đẹp nhé)
         return view('customer.order', compact('table', 'categories', 'products'));
     }
 
     /**
-     * Xử lý lưu đơn hàng khách gửi từ điện thoại
+     * Xử lý lưu đơn hàng khách gửi từ điện thoại (Hỗ trợ cộng dồn/gọi thêm)
      * Route: /menu/order
      */
     public function storeOrder(Request $request)
     {
-        // Kiểm tra dữ liệu đầu vào
+        // Kiểm tra dữ liệu đầu vào chuẩn xác
         $request->validate([
             'table_id' => 'required|exists:coffee_tables,id',
             'cart'     => 'required|array|min:1',
@@ -48,49 +48,81 @@ class CustomerOrderController extends Controller
         try {
             DB::beginTransaction();
 
-            // 1. Tính tổng tiền đơn hàng từ giỏ hàng gửi lên
-            $totalAmount = 0;
+            // 1. Tìm đơn hàng hiện tại của bàn (Chưa thanh toán và chưa hoàn thành)
+            // Logic: Nếu khách đang ngồi đó mà gọi thêm, ta sẽ gộp chung vào 1 hóa đơn
+            $order = Order::where('table_id', $request->table_id)
+                          ->where('payment_status', 'unpaid')
+                          ->whereIn('status', ['pending', 'preparing', 'unconfirmed'])
+                          ->first();
+
+            // 2. Tính toán tổng số tiền của lượt gọi món này
+            $newTotalFromCart = 0;
             foreach ($request->cart as $item) {
-                $totalAmount += $item['price'] * $item['qty'];
+                $newTotalFromCart += $item['price'] * $item['qty'];
             }
 
-            // 2. Tạo đơn hàng mới trong bảng orders
-            $order = Order::create([
-                'table_id'       => $request->table_id,
-                'total_amount'   => $totalAmount,
-                'status'         => 'pending', // Trạng thái chờ xử lý
-                'payment_status' => 'unpaid',  // Chưa thanh toán
-                'order_type'     => 'qr_code',  // Đánh dấu đơn từ QR
-                'note'           => 'Khách đặt món qua QR tại bàn',
-            ]);
+            if ($order) {
+                // --- TRƯỜNG HỢP GỌI THÊM MÓN ---
+                $order->total_amount += $newTotalFromCart;
+                $order->save();
 
-            // 3. Lưu chi tiết từng món vào bảng order_details
-            foreach ($request->cart as $item) {
-                OrderDetail::create([
-                    'order_id'   => $order->id,
-                    'product_id' => $item['id'],
-                    'quantity'   => $item['qty'],
-                    'price'      => $item['price'],
+                foreach ($request->cart as $item) {
+                    // Kiểm tra xem món này đã có trong hóa đơn chưa để cộng dồn số lượng
+                    $detail = OrderDetail::where('order_id', $order->id)
+                                         ->where('product_id', $item['id'])
+                                         ->first();
+
+                    if ($detail) {
+                        $detail->quantity += $item['qty'];
+                        $detail->save();
+                    } else {
+                        // Nếu là món mới hoàn toàn trong đơn cũ
+                        OrderDetail::create([
+                            'order_id'   => $order->id,
+                            'product_id' => $item['id'],
+                            'quantity'   => $item['qty'],
+                            'price'      => $item['price'],
+                        ]);
+                    }
+                }
+            } else {
+                // --- TRƯỜNG HỢP MỞ ĐƠN MỚI ---
+                $order = Order::create([
+                    'table_id'       => $request->table_id,
+                    'total_amount'   => $newTotalFromCart,
+                    'status'         => 'pending', 
+                    'payment_status' => 'unpaid',
+                    'note'           => 'Khách gọi món qua QR',
+                    'order_date'     => now(),
                 ]);
+
+                foreach ($request->cart as $item) {
+                    OrderDetail::create([
+                        'order_id'   => $order->id,
+                        'product_id' => $item['id'],
+                        'quantity'   => $item['qty'],
+                        'price'      => $item['price'],
+                    ]);
+                }
             }
 
-            // 4. CẬP NHẬT TRẠNG THÁI BÀN SANG 'WAITING'
-            // Đây là bước quan trọng để máy POS của nhân viên nhấp nháy báo đơn mới
+            // 3. KÍCH HOẠT CHẤM ĐỎ: Cập nhật trạng thái bàn sang 'pending'
+            // Trạng thái này sẽ kích hoạt Badge thông báo real-time trên màn hình Staff
             $table = CoffeeTable::find($request->table_id);
-            $table->update(['status' => 'waiting']);
+            $table->update(['status' => 'pending']); 
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Gửi đơn hàng thành công! Vui lòng đợi nhân viên phục vụ.'
+                'message' => 'Hệ thống đã nhận được yêu cầu của bạn. Chúc bạn ngon miệng!'
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Có lỗi xảy ra khi lưu đơn hàng: ' . $e->getMessage()
+                'message' => 'Lỗi hệ thống: ' . $e->getMessage()
             ], 500);
         }
     }

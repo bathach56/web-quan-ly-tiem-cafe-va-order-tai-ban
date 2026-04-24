@@ -61,33 +61,41 @@ class AuthController extends Controller
     /**
      * Xử lý đăng ký
      */
-    public function processRegister(Request $request)
-    {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'username' => 'required|string|max:255|unique:users',
-            'password' => 'required|min:6|confirmed',
-        ], [
-            'name.required'     => 'Vui lòng nhập họ tên.',
-            'username.required' => 'Vui lòng nhập tên đăng nhập.',
-            'username.unique'   => 'Tên đăng nhập đã tồn tại.',
-            'password.required' => 'Vui lòng nhập mật khẩu.',
-            'password.min'      => 'Mật khẩu phải có ít nhất 6 ký tự.',
-            'password.confirmed'=> 'Xác nhận mật khẩu không khớp.',
-        ]);
+    /**
+ /**
+ * Xử lý đăng ký tài khoản
+ */
+public function processRegister(Request $request)
+{
+    $request->validate([
+        'name'     => 'required|string|max:255',
+        'username' => 'required|string|max:255|unique:users',
+        'password' => 'required|min:6|confirmed',
+    ], [
+        'name.required'     => 'Vui lòng nhập họ tên.',
+        'username.required' => 'Vui lòng nhập tên đăng nhập.',
+        'username.unique'   => 'Tên đăng nhập đã tồn tại.',
+        'password.required' => 'Vui lòng nhập mật khẩu.',
+        'password.min'      => 'Mật khẩu phải có ít nhất 6 ký tự.',
+        'password.confirmed'=> 'Xác nhận mật khẩu không khớp.',
+    ]);
 
-        User::create([
-            'name'     => $request->name,
-            'username' => $request->username,
-            'email'    => $request->username . '@hutechcoffee.local',
-            'password' => Hash::make($request->password),
-            'position' => 'Staff',        // Mặc định là Staff
-            'status'   => 'active',
-        ]);
+    // LOGIC TỰ ĐỘNG: Nếu hệ thống chưa có người dùng nào, người này sẽ là Admin
+    $isFirstUser = \App\Models\User::count() === 0;
+    $role = $isFirstUser ? 'Admin' : 'Staff';
 
-        return redirect()->route('login')
-            ->with('success', 'Đăng ký tài khoản thành công! Vui lòng đăng nhập.');
-    }
+    \App\Models\User::create([
+        'name'     => $request->name,
+        'username' => $request->username,
+        'email'    => $request->username . '@hutechcoffee.local',
+        'password' => \Illuminate\Support\Facades\Hash::make($request->password),
+        'position' => $role, // Gán quyền Admin nếu là người đầu tiên
+        'status'   => 'active',
+    ]);
+
+    return redirect()->route('login')
+        ->with('success', 'Đăng ký tài khoản ' . ($isFirstUser ? 'Admin' : 'nhân viên') . ' thành công! Vui lòng đăng nhập.');
+}
 
     /**
      * Điều hướng theo vai trò

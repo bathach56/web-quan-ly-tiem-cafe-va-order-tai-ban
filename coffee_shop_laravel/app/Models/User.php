@@ -20,10 +20,11 @@ class User extends Authenticatable
      */
     protected $fillable = [
     'name',
-    'username', // Đảm bảo có dòng này
+    'username',
     'email',
     'password',
-    'position', // Đảm bảo có dòng này
+    'position', // Chắc chắn có dòng này
+    'status',
     'avatar',
 ];
 
@@ -46,7 +47,8 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            // 'password' => 'hashed', // Đã xóa: controllers dùng Hash::make() trực tiếp,
+            // giữ cast 'hashed' sẽ gây double-hash → nhân viên không đăng nhập được
         ];
     }
 }

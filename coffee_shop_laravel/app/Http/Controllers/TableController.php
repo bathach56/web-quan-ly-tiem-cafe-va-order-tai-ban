@@ -8,21 +8,32 @@ use Illuminate\Http\Request;
 class TableController extends Controller
 {
     /**
-     * Hiển thị danh sách tất cả bàn
+     * Hiển thị danh sách quản lý bàn (Dạng bảng)
      */
-    // Thêm hoặc thay thế hàm index thành 2 hàm rõ ràng
-public function index()
-{
-    $tables = CoffeeTable::orderBy('name', 'asc')->get();
-    return view('tables.index', compact('tables'));
-}
+    public function index()
+    {
+        $tables = CoffeeTable::orderBy('name', 'asc')->get();
+        return view('tables.index', compact('tables'));
+    }
 
-// Thêm hàm mới này
-public function floorPlan()
-{
-    $tables = CoffeeTable::orderBy('name', 'asc')->get();
-    return view('tables.floor-plan', compact('tables'));
-}
+    /**
+     * Hiển thị sơ đồ mặt bằng (Dạng Grid/React)
+     */
+    public function floorPlan()
+    {
+        $tables = CoffeeTable::orderBy('name', 'asc')->get();
+        return view('tables.floor-plan', compact('tables'));
+    }
+
+    /**
+     * API TRẢ VỀ JSON: Dùng cho React Polling cập nhật chấm đỏ mỗi 5 giây
+     * Route: tables.fetch_status
+     */
+    public function fetchStatus()
+    {
+        $tables = CoffeeTable::orderBy('name', 'asc')->get();
+        return response()->json($tables);
+    }
 
     /**
      * Lưu bàn mới
@@ -32,7 +43,7 @@ public function floorPlan()
         $request->validate([
             'name'  => 'required|string|max:50|unique:coffee_tables,name',
             'area'  => 'required|string|max:100',
-            'status'=> 'nullable|in:empty,occupied,waiting',
+            'status'=> 'nullable|in:available,occupied,pending',
         ], [
             'name.required' => 'Vui lòng nhập tên bàn.',
             'name.unique'   => 'Tên bàn này đã tồn tại.',
@@ -42,7 +53,7 @@ public function floorPlan()
         CoffeeTable::create([
             'name'   => $request->name,
             'area'   => $request->area,
-            'status' => $request->status ?? 'empty',
+            'status' => $request->status ?? 'available', // Mặc định là bàn trống
         ]);
 
         return back()->with('success', '✅ Đã thêm bàn mới thành công!');
@@ -56,7 +67,7 @@ public function floorPlan()
         $request->validate([
             'name'  => 'required|string|max:50|unique:coffee_tables,name,' . $id,
             'area'  => 'required|string|max:100',
-            'status'=> 'required|in:empty,occupied,waiting',
+            'status'=> 'required|in:available,occupied,pending',
         ]);
 
         $table = CoffeeTable::findOrFail($id);
@@ -77,10 +88,10 @@ public function floorPlan()
     {
         $table = CoffeeTable::findOrFail($id);
         
-        // Có thể thêm kiểm tra: nếu bàn đang có khách thì không cho xóa
-        // if ($table->status === 'occupied') {
-        //     return back()->with('error', 'Không thể xóa bàn đang có khách!');
-        // }
+        // Chặn xóa nếu bàn đang có khách hoặc đang có đơn chờ xác nhận
+        if ($table->status !== 'available') {
+            return back()->with('error', '❌ Không thể xóa bàn đang có khách hoặc đang chờ xử lý!');
+        }
 
         $table->delete();
 
@@ -98,13 +109,15 @@ public function floorPlan()
             return back()->with('error', 'Không có bàn nào được chọn để xóa!');
         }
 
-        // Xóa các bàn được chọn
-        $deletedCount = CoffeeTable::whereIn('id', $ids)->delete();
+        // Chỉ cho phép xóa những bàn đang ở trạng thái 'available'
+        $deletedCount = CoffeeTable::whereIn('id', $ids)
+                                    ->where('status', 'available')
+                                    ->delete();
 
         if ($deletedCount > 0) {
-            return back()->with('success', "✅ Đã xóa thành công {$deletedCount} bàn!");
+            return back()->with('success', "✅ Đã xóa thành công {$deletedCount} bàn trống!");
         }
 
-        return back()->with('error', 'Không tìm thấy bàn nào để xóa.');
+        return back()->with('error', 'Không tìm thấy bàn trống nào để xóa.');
     }
 }
