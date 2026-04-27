@@ -131,7 +131,7 @@
 
 <div class="header animate__animated animate__fadeInDown">
     <div class="d-flex justify-content-between align-items-center">
-        <div class="table-badge"><i class="fa-solid fa-couch me-1"></i> Bàn {{ $table->name }}</div>
+        <div class="table-badge"><i class="fa-solid fa-couch me-1"></i>{{ $table->name }}</div>
         <div class="text-center">
             <h6 class="fw-800 m-0 text-uppercase">Thực Đơn</h6>
             <small class="text-muted" style="font-size: 8px; letter-spacing: 2px;">PREMIUM QUALITY</small>

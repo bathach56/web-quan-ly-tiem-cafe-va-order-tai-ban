@@ -1,7 +1,6 @@
 <?php
 
 namespace App\Providers;
-
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\View; // Nhớ thêm dòng này
 use Illuminate\Support\Facades\DB;   // Nhớ thêm dòng này

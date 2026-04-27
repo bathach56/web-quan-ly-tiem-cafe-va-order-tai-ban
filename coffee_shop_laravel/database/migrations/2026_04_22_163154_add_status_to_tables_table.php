@@ -11,17 +11,21 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tables', function (Blueprint $table) {
-            // Thêm cột status để quản lý trạng thái bàn và hiển thị thông báo real-time
-            // Giá trị mặc định là 'available' (Bàn trống)
-            $table->string('status')->default('available')->after('name');
-            
-            /* Gợi ý các trạng thái cho Thịnh:
-               - 'available': Bàn trống, sẵn sàng đón khách.
-               - 'pending': Khách vừa gửi đơn từ QR, cần hiện CHẤM ĐỎ cho nhân viên.
-               - 'occupied': Đã xác nhận đơn, khách đang dùng bữa tại bàn.
-            */
-        });
+        // Kiểm tra đúng tên bảng là 'coffee_tables'
+        if (Schema::hasTable('coffee_tables')) {
+            Schema::table('coffee_tables', function (Blueprint $table) {
+                // Kiểm tra nếu chưa có cột status thì mới thêm vào
+                if (!Schema::hasColumn('coffee_tables', 'status')) {
+                    $table->string('status')->default('available');
+                    
+                    /* Logic trạng thái của Nhóm 3:
+                       - 'available': Bàn trống.
+                       - 'pending': Khách vừa quét QR gọi món (hiện chấm đỏ).
+                       - 'occupied': Khách đang ngồi và đã xác nhận đơn.
+                    */
+                }
+            });
+        }
     }
 
     /**
@@ -29,9 +33,12 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tables', function (Blueprint $table) {
-            // Xóa cột status khi thực hiện lệnh rollback
-            $table->dropColumn('status');
-        });
+        if (Schema::hasTable('coffee_tables')) {
+            Schema::table('coffee_tables', function (Blueprint $table) {
+                if (Schema::hasColumn('coffee_tables', 'status')) {
+                    $table->dropColumn('status');
+                }
+            });
+        }
     }
 };

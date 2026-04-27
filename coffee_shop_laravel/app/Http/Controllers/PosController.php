@@ -8,96 +8,128 @@ use App\Models\Product;
 use App\Models\CoffeeTable;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\Voucher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class PosController extends Controller
 {
     /**
-     * Hiển thị giao diện máy POS cho nhân viên
+     * Hiển thị giao diện máy POS
      */
     public function index()
     {
-        // Chặn Admin vào giao diện bán hàng nếu cần
-        if (Auth::user()->position === 'Admin') {
-            return redirect()->route('dashboard')->with('error', 'Admin vui lòng xem báo cáo, không trực tiếp bán hàng.');
-        }
+        // 1. Lấy cấu hình quán (Dùng DB table để tránh lỗi Class ShopSetting not found)
+        $shop_setting = DB::table('shop_settings')->first();
 
+        // 2. Lấy dữ liệu thực đơn
         $categories = Category::where('status', 'active')->get();
         $products = Product::where('status', 'active')->with('category')->get();
+        
+        // 3. Lấy sơ đồ bàn
         $tables = CoffeeTable::orderBy('name', 'asc')->get();
 
-        return view('pos.index', compact('categories', 'products', 'tables'));
+        // 4. Lấy danh sách Voucher khả dụng (Đang chạy, trong hạn dùng, còn lượt)
+        $now = Carbon::now();
+        $vouchers = Voucher::where('status', 'active')
+            ->where(function($q) use ($now) {
+                $q->whereNull('start_date')->orWhere('start_date', '<=', $now);
+            })
+            ->where(function($q) use ($now) {
+                $q->whereNull('end_date')->orWhere('end_date', '>=', $now);
+            })
+            ->get()
+            ->filter(function($v) {
+                // Lọc thêm logic lượt dùng nếu có thiết lập limit_uses
+                return is_null($v->limit_uses) || $v->used_count < $v->limit_uses;
+            });
+
+        return view('pos.index', compact('categories', 'products', 'tables', 'shop_setting', 'vouchers'));
     }
 
     /**
-     * Lấy thông tin đơn hàng hiện tại của bàn (Dùng cho Polling/QR)
+     * AJAX: Kiểm tra Voucher khi nhập tay hoặc chọn từ danh sách
+     */
+    public function applyVoucher(Request $request)
+    {
+        $now = Carbon::now();
+        $voucher = Voucher::where('code', $request->code)
+            ->where('status', 'active')
+            ->first();
+
+        if (!$voucher) {
+            return response()->json(['success' => false, 'message' => 'Mã giảm giá không tồn tại.']);
+        }
+
+        // Kiểm tra thời hạn
+        if (($voucher->start_date && $now->lt($voucher->start_date)) || 
+            ($voucher->end_date && $now->gt($voucher->end_date))) {
+            return response()->json(['success' => false, 'message' => 'Mã giảm giá đã hết hạn sử dụng.']);
+        }
+
+        // Kiểm tra lượt dùng
+        if (!is_null($voucher->limit_uses) && $voucher->used_count >= $voucher->limit_uses) {
+            return response()->json(['success' => false, 'message' => 'Mã giảm giá đã hết lượt sử dụng.']);
+        }
+
+        // Kiểm tra đơn hàng tối thiểu
+        if ($request->total < $voucher->min_order_value) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Đơn hàng chưa đủ tối thiểu ' . number_format($voucher->min_order_value) . 'đ'
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'code' => $voucher->code,
+            'type' => $voucher->type,
+            'value' => (int)$voucher->discount_value,
+            'message' => 'Áp dụng thành công!'
+        ]);
+    }
+
+    /**
+     * Lấy thông tin đơn hàng hiện tại của bàn
      */
     public function getTableOrder($id)
     {
         try {
             $order = Order::where('table_id', $id)
                 ->where('payment_status', 'unpaid')
-                ->whereIn('status', ['pending', 'unconfirmed', 'preparing'])
+                ->whereIn('status', ['pending', 'preparing'])
                 ->with(['orderDetails.product']) 
                 ->first();
 
             if (!$order) {
-                return response()->json(['success' => false, 'message' => 'Bàn này hiện đang trống.']);
+                return response()->json(['success' => false, 'message' => 'Bàn trống.']);
             }
 
-            // Map dữ liệu để JavaScript nhận đúng key 'id'
             $details = $order->orderDetails->map(function ($item) {
                 return [
-                    'id'        => $item->product_id, // Quan trọng: Đây là key 'id' mà JS cần
-                    'detail_id' => $item->id,
-                    'name'      => $item->product->name ?? 'Món đã bị xóa',
-                    'price'     => (int)$item->price,
-                    'qty'       => $item->quantity,
+                    'id'    => $item->product_id, 
+                    'name'  => $item->product->name ?? 'Món đã xóa',
+                    'price' => (int)$item->price,
+                    'qty'   => $item->quantity,
                 ];
             });
 
             return response()->json([
                 'success'  => true,
                 'order_id' => $order->id,
-                'status'   => $order->status,
                 'details'  => $details
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json(['success' => false, 'message' => 'Lỗi tải dữ liệu.'], 500);
         }
     }
 
     /**
-     * Xác nhận đơn hàng gửi xuống bếp & Tắt trạng thái pending
-     */
-    public function sendToKitchen(Request $request)
-    {
-        $request->validate(['order_id' => 'required|exists:orders,id']);
-
-        try {
-            DB::beginTransaction();
-            
-            $order = Order::findOrFail($request->order_id);
-            $order->update(['status' => 'preparing']);
-            
-            // Chuyển trạng thái bàn sang 'occupied' (màu đỏ)
-            CoffeeTable::where('id', $order->table_id)->update(['status' => 'occupied']);
-            
-            DB::commit();
-            return response()->json(['success' => true, 'message' => 'Đã gửi đơn xuống bếp thành công!']);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * XỬ LÝ THANH TOÁN (Fix lỗi Undefined array key "id")
+     * XỬ LÝ THANH TOÁN (Checkout)
      */
     public function checkout(Request $request) 
     {
-        // 1. Validate dữ liệu đầu vào
         $request->validate([
             'table_id' => 'required',
             'cart' => 'required|array',
@@ -106,35 +138,49 @@ class PosController extends Controller
 
         DB::beginTransaction();
         try {
-            // 2. Tìm đơn hàng cũ (nếu có) hoặc tạo đơn mới
-            $order = null;
-            if ($request->order_id) {
-                $order = Order::find($request->order_id);
+            // 1. Tạo hoặc cập nhật đơn hàng
+            $order = $request->order_id ? Order::find($request->order_id) : new Order();
+            
+            $order->table_id = $request->table_id;
+            $order->user_id = Auth::id(); // Nhân viên thu ngân
+            $order->order_date = now();
+            
+            // 2. Tính toán tiền bạc
+            $subtotal = 0;
+            foreach ($request->cart as $item) {
+                $subtotal += $item['price'] * $item['qty'];
             }
 
-            if (!$order) {
-                $order = new Order();
-                $order->table_id = $request->table_id;
-                $order->order_date = now();
+            // Xử lý Voucher
+            $voucher_discount = 0;
+            if ($request->voucher_code) {
+                $voucher = Voucher::where('code', $request->voucher_code)->first();
+                if ($voucher) {
+                    $voucher_discount = ($voucher->type === 'percentage') 
+                        ? ($subtotal * $voucher->discount_value / 100) 
+                        : $voucher->discount_value;
+                    
+                    $order->voucher_code = $voucher->code;
+                    $voucher->increment('used_count'); // Tăng lượt dùng voucher
+                }
             }
 
-            // 3. Cập nhật thông tin đơn hàng theo Database thật
-            $order->user_id = Auth::id(); // Dùng user_id thay vì employee_id
-            $order->total_amount = $request->total_amount;
+            // Giảm giá nhập tay (%)
+            $manual_percent = $request->manual_discount ?? 0;
+            $manual_discount = ($subtotal * $manual_percent) / 100;
+
+            $order->total_amount = $subtotal;
+            $order->discount_amount = $voucher_discount + $manual_discount;
+            $order->final_amount = max(0, $subtotal - $order->discount_amount);
+            
             $order->payment_method = $request->payment_method;
             $order->payment_status = 'paid';
             $order->status = 'completed';
             $order->save();
 
-            // 4. Xử lý chi tiết món ăn (Xóa cũ nạp mới để đảm bảo tính đồng nhất)
+            // 3. Lưu chi tiết món ăn
             OrderDetail::where('order_id', $order->id)->delete();
-
             foreach ($request->cart as $item) {
-                // KIỂM TRA KEY 'id' TRƯỚC KHI LƯU
-                if (!isset($item['id'])) {
-                    throw new \Exception("Dữ liệu giỏ hàng không hợp lệ (Thiếu ID sản phẩm).");
-                }
-
                 OrderDetail::create([
                     'order_id'   => $order->id,
                     'product_id' => $item['id'],
@@ -143,33 +189,25 @@ class PosController extends Controller
                 ]);
             }
 
-            // 5. Giải phóng bàn về trạng thái trống
+            // 4. Cập nhật trạng thái bàn về Trống
             CoffeeTable::where('id', $request->table_id)->update(['status' => 'available']);
 
             DB::commit();
-            
-            return response()->json([
-                'success' => true,
-                'order_id' => $order->id,
-                'message' => 'Thanh toán hoàn tất!'
-            ]);
+            return response()->json(['success' => true, 'order_id' => $order->id]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Lỗi Server: ' . $e->getMessage()
-            ], 500); 
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500); 
         }
     }
 
     /**
-     * In hóa đơn HTML
+     * In hóa đơn sau thanh toán
      */
     public function printReceipt($id)
     {
-        // Load cả user (nhân viên) và table để in bill đầy đủ
         $order = Order::with(['orderDetails.product', 'table', 'user'])->findOrFail($id);
-        return view('pos.receipt', compact('order'));
+        $shop_setting = DB::table('shop_settings')->first();
+        return view('pos.receipt', compact('order', 'shop_setting'));
     }
 }

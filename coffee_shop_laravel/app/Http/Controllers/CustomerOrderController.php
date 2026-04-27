@@ -8,75 +8,117 @@ use App\Models\Category;
 use App\Models\Product;
 use App\Models\Order;
 use App\Models\OrderDetail;
+use App\Models\Voucher; // Nhớ import Model Voucher mới tạo
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class CustomerOrderController extends Controller
 {
     /**
-     * Hiển thị giao diện gọi món cho khách hàng qua mã QR
-     * Route: /menu/table/{id}
+     * Hiển thị menu cho khách hàng qua mã QR
      */
     public function index($id)
     {
-        // 1. Lấy thông tin bàn dựa trên ID từ URL
         $table = CoffeeTable::findOrFail($id);
-
-        // 2. Lấy danh mục có trạng thái active để hiển thị menu
+        $shop_setting = DB::table('shop_settings')->first();
+        
         $categories = Category::where('status', 'active')->get();
+        $products = Product::where('status', 'active')->with('category')->get();
 
-        // 3. Lấy sản phẩm active kèm thông tin danh mục
-        $products = Product::where('status', 'active')
-                            ->with('category')
-                            ->get();
+        $bestSellers = Product::where('status', 'active')
+                                ->where('is_best_seller', 1) 
+                                ->limit(4)
+                                ->get();
 
-        // Trả về view giao diện khách hàng (Thịnh thiết kế Mobile-First cho đẹp nhé)
-        return view('customer.order', compact('table', 'categories', 'products'));
+        return view('customer.order', compact('table', 'categories', 'products', 'bestSellers', 'shop_setting'));
     }
 
     /**
-     * Xử lý lưu đơn hàng khách gửi từ điện thoại (Hỗ trợ cộng dồn/gọi thêm)
-     * Route: /menu/order
+     * AJAX: Kiểm tra mã Voucher từ phía khách hàng
+     */
+    public function checkVoucher(Request $request)
+    {
+        $voucher = Voucher::where('code', $request->code)
+            ->where('status', 'active')
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->first();
+
+        if (!$voucher) {
+            return response()->json(['success' => false, 'message' => 'Mã không hợp lệ hoặc đã hết hạn.']);
+        }
+
+        // Kiểm tra xem đã hết lượt dùng chưa
+        if ($voucher->limit_uses !== null && $voucher->used_count >= $voucher->limit_uses) {
+            return response()->json(['success' => false, 'message' => 'Mã giảm giá đã hết lượt sử dụng.']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'type' => $voucher->type,
+            'value' => (int)$voucher->discount_value,
+            'min_order' => (int)$voucher->min_order_value,
+            'message' => 'Áp dụng mã thành công!'
+        ]);
+    }
+
+    /**
+     * Xử lý gửi đơn hàng (Hỗ trợ cộng dồn và áp dụng Voucher)
      */
     public function storeOrder(Request $request)
     {
-        // Kiểm tra dữ liệu đầu vào chuẩn xác
         $request->validate([
             'table_id' => 'required|exists:coffee_tables,id',
             'cart'     => 'required|array|min:1',
+            'cart.*.id'    => 'required|exists:products,id',
+            'cart.*.qty'   => 'required|integer|min:1',
+            'cart.*.price' => 'required|numeric',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // 1. Tìm đơn hàng hiện tại của bàn (Chưa thanh toán và chưa hoàn thành)
-            // Logic: Nếu khách đang ngồi đó mà gọi thêm, ta sẽ gộp chung vào 1 hóa đơn
+            // 1. Tìm đơn hiện tại của bàn
             $order = Order::where('table_id', $request->table_id)
                           ->where('payment_status', 'unpaid')
                           ->whereIn('status', ['pending', 'preparing', 'unconfirmed'])
                           ->first();
 
-            // 2. Tính toán tổng số tiền của lượt gọi món này
-            $newTotalFromCart = 0;
+            $subtotal = 0;
             foreach ($request->cart as $item) {
-                $newTotalFromCart += $item['price'] * $item['qty'];
+                $subtotal += $item['price'] * $item['qty'];
+            }
+
+            // 2. Tính toán giảm giá Voucher (nếu khách có nhập mã)
+            $discount_amount = 0;
+            if ($request->voucher_code) {
+                $voucher = Voucher::where('code', $request->voucher_code)->first();
+                if ($voucher) {
+                    if ($voucher->type == 'percentage') {
+                        $discount_amount = ($subtotal * $voucher->discount_value) / 100;
+                    } else {
+                        $discount_amount = $voucher->discount_value;
+                    }
+                    $voucher->increment('used_count');
+                }
             }
 
             if ($order) {
-                // --- TRƯỜNG HỢP GỌI THÊM MÓN ---
-                $order->total_amount += $newTotalFromCart;
+                // CASE 1: Khách gọi thêm món vào đơn cũ
+                $order->total_amount += $subtotal;
+                $order->discount_amount += $discount_amount;
+                // final_amount = tiền gốc - tiền giảm
+                $order->final_amount = $order->total_amount - $order->discount_amount;
                 $order->save();
 
                 foreach ($request->cart as $item) {
-                    // Kiểm tra xem món này đã có trong hóa đơn chưa để cộng dồn số lượng
                     $detail = OrderDetail::where('order_id', $order->id)
                                          ->where('product_id', $item['id'])
                                          ->first();
-
                     if ($detail) {
                         $detail->quantity += $item['qty'];
                         $detail->save();
                     } else {
-                        // Nếu là món mới hoàn toàn trong đơn cũ
                         OrderDetail::create([
                             'order_id'   => $order->id,
                             'product_id' => $item['id'],
@@ -86,14 +128,17 @@ class CustomerOrderController extends Controller
                     }
                 }
             } else {
-                // --- TRƯỜNG HỢP MỞ ĐƠN MỚI ---
+                // CASE 2: Khách mở đơn mới hoàn toàn
                 $order = Order::create([
                     'table_id'       => $request->table_id,
-                    'total_amount'   => $newTotalFromCart,
+                    'total_amount'   => $subtotal,
+                    'discount_amount'=> $discount_amount,
+                    'final_amount'   => $subtotal - $discount_amount,
                     'status'         => 'pending', 
                     'payment_status' => 'unpaid',
-                    'note'           => 'Khách gọi món qua QR',
-                    'order_date'     => now(),
+                    'voucher_code'   => $request->voucher_code,
+                    'note'           => $request->note ?? 'Khách đặt qua QR',
+                    'order_date'     => Carbon::now(),
                 ]);
 
                 foreach ($request->cart as $item) {
@@ -106,24 +151,19 @@ class CustomerOrderController extends Controller
                 }
             }
 
-            // 3. KÍCH HOẠT CHẤM ĐỎ: Cập nhật trạng thái bàn sang 'pending'
-            // Trạng thái này sẽ kích hoạt Badge thông báo real-time trên màn hình Staff
-            $table = CoffeeTable::find($request->table_id);
-            $table->update(['status' => 'pending']); 
+            // 3. Đổi trạng thái bàn sang 'pending' để báo hiệu cho nhân viên
+            CoffeeTable::where('id', $request->table_id)->update(['status' => 'pending']);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Hệ thống đã nhận được yêu cầu của bạn. Chúc bạn ngon miệng!'
+                'message' => 'Đơn hàng đã được gửi! Cảm ơn bạn.'
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Lỗi hệ thống: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 }

@@ -15,6 +15,7 @@ class AuthController extends Controller
      */
     public function showLogin()
     {
+        // Nếu đã đăng nhập rồi thì không cho vào trang login nữa
         if (Auth::check()) {
             return $this->redirectByUserRole(Auth::user());
         }
@@ -34,8 +35,12 @@ class AuthController extends Controller
             'password.required' => 'Vui lòng nhập mật khẩu.',
         ]);
 
-        if (Auth::attempt(['username' => $credentials['username'], 'password' => $credentials['password']], $request->remember)) {
+        $remember = $request->has('remember');
+
+        if (Auth::attempt(['username' => $credentials['username'], 'password' => $credentials['password']], $remember)) {
             $request->session()->regenerate();
+            
+            // Lưu tên người dùng vào session để hiển thị trên Topbar
             Session::put('user_name', Auth::user()->name);
 
             return $this->redirectByUserRole(Auth::user())
@@ -55,68 +60,70 @@ class AuthController extends Controller
         if (Auth::check()) {
             return $this->redirectByUserRole(Auth::user());
         }
-        return view('auth.register');   // ← Thêm dòng này
+        return view('auth.register');
     }
 
     /**
-     * Xử lý đăng ký
+     * Xử lý đăng ký tài khoản
+     * Tự động gán quyền Admin cho người đăng ký đầu tiên của hệ thống
      */
+    public function processRegister(Request $request)
+    {
+        $request->validate([
+            'name'     => 'required|string|max:255',
+            'username' => 'required|string|max:255|unique:users',
+            'password' => 'required|min:6|confirmed',
+        ], [
+            'name.required'     => 'Vui lòng nhập họ tên.',
+            'username.required' => 'Vui lòng nhập tên đăng nhập.',
+            'username.unique'   => 'Tên đăng nhập này đã có người sử dụng.',
+            'password.required' => 'Vui lòng nhập mật khẩu.',
+            'password.min'      => 'Mật khẩu phải có ít nhất 6 ký tự.',
+            'password.confirmed'=> 'Xác nhận mật khẩu không khớp.',
+        ]);
+
+        // Logic phân quyền tự động cho Nhóm 3
+        $isFirstUser = User::count() === 0;
+        $role = $isFirstUser ? 'Admin' : 'Staff';
+
+        User::create([
+            'name'     => $request->name,
+            'username' => $request->username,
+            'email'    => $request->username . '@hutechcoffee.local', // Tạo email giả định theo username
+            'password' => Hash::make($request->password),
+            'position' => $role,
+            'status'   => 'active',
+        ]);
+
+        $message = $isFirstUser 
+            ? 'Tài khoản Admin đầu tiên đã được khởi tạo!' 
+            : 'Đăng ký tài khoản nhân viên thành công!';
+
+        return redirect()->route('login')->with('success', $message . ' Vui lòng đăng nhập.');
+    }
+
     /**
- /**
- * Xử lý đăng ký tài khoản
- */
-public function processRegister(Request $request)
-{
-    $request->validate([
-        'name'     => 'required|string|max:255',
-        'username' => 'required|string|max:255|unique:users',
-        'password' => 'required|min:6|confirmed',
-    ], [
-        'name.required'     => 'Vui lòng nhập họ tên.',
-        'username.required' => 'Vui lòng nhập tên đăng nhập.',
-        'username.unique'   => 'Tên đăng nhập đã tồn tại.',
-        'password.required' => 'Vui lòng nhập mật khẩu.',
-        'password.min'      => 'Mật khẩu phải có ít nhất 6 ký tự.',
-        'password.confirmed'=> 'Xác nhận mật khẩu không khớp.',
-    ]);
-
-    // LOGIC TỰ ĐỘNG: Nếu hệ thống chưa có người dùng nào, người này sẽ là Admin
-    $isFirstUser = \App\Models\User::count() === 0;
-    $role = $isFirstUser ? 'Admin' : 'Staff';
-
-    \App\Models\User::create([
-        'name'     => $request->name,
-        'username' => $request->username,
-        'email'    => $request->username . '@hutechcoffee.local',
-        'password' => \Illuminate\Support\Facades\Hash::make($request->password),
-        'position' => $role, // Gán quyền Admin nếu là người đầu tiên
-        'status'   => 'active',
-    ]);
-
-    return redirect()->route('login')
-        ->with('success', 'Đăng ký tài khoản ' . ($isFirstUser ? 'Admin' : 'nhân viên') . ' thành công! Vui lòng đăng nhập.');
-}
-
-    /**
-     * Điều hướng theo vai trò
+     * Điều hướng người dùng dựa trên chức vụ (Private Helper)
      */
     private function redirectByUserRole($user)
     {
         if ($user->position === 'Admin') {
             return redirect()->route('dashboard');
         }
+        // Nhân viên (Staff) sẽ vào thẳng máy bán hàng POS
         return redirect()->route('pos.index');
     }
 
     /**
-     * Đăng xuất
+     * Xử lý đăng xuất
      */
     public function logout(Request $request)
     {
         Auth::logout();
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login')->with('success', 'Bạn đã đăng xuất thành công.');
+        return redirect()->route('login')->with('success', 'Bạn đã đăng xuất khỏi hệ thống.');
     }
 }
