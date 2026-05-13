@@ -407,9 +407,35 @@
                 } else { el.removeClass('border-danger text-danger table-new-order').addClass('border-success text-success'); el.find('.status-label').text('{{ __('messages.empty') }}'); b.addClass('d-none'); }
             });
             if (occCount > 0) $('#mainBadge').text(occCount).removeClass('d-none'); else $('#mainBadge').addClass('d-none');
-            if (hasNew) { const au = document.getElementById('notifSound'); au.currentTime = 0; au.play().catch(e => {}); $('#btnMainTable').addClass('animate__animated animate__flash animate__infinite text-danger'); }
+            if (hasNew) { 
+                const au = document.getElementById('notifSound'); 
+                au.currentTime = 0; 
+                let playPromise = au.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => { console.log("Audio play blocked by browser. User must interact with the page first.", e); });
+                }
+                $('#btnMainTable').addClass('animate__animated animate__flash animate__infinite text-danger'); 
+            }
         });
     }
+    
+    // Mở khóa âm thanh (Bypass Autoplay Policy) khi người dùng tương tác lần đầu
+    let audioUnlocked = false;
+    document.addEventListener('click', function() {
+        if (!audioUnlocked) {
+            const au = document.getElementById('notifSound');
+            let playPromise = au.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    au.pause();
+                    au.currentTime = 0;
+                    audioUnlocked = true;
+                    console.log("Audio unlocked!");
+                }).catch(e => {});
+            }
+        }
+    });
+
     setInterval(checkNewOrders, 5000);
 </script>
 </body>
